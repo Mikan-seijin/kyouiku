@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>施工動画 受講ポータル</title>
+<!--
+  施工動画 受講ポータル — 入口ページ（v1.4.0・2026/09/30）
+  ・Google の外（会社のホームページや GitHub Pages）にこの1枚を置く。受講画面そのものは毎回 Apps Script から取り寄せる
+    （画面を直してもこのファイルは置き直さなくてよい）
+  ・Cookie を送らずに取り寄せるので、Google アカウントが複数ログインしているスマホ・パソコンでも開ける
+    （/exec を直接開くと「現在、ファイルを開くことができません」になる Google 側の不具合を避ける）
+  ・入口のアドレスが毎回同じなので、ログインがこの端末に30日保たれる（Google サイトの埋め込みは毎回アドレスが変わり、保たれない）
+  ・本人専用リンクは「この URL#k=鍵」。鍵は # の後ろなので、このページを置いたサーバーには送られない。読み取ったらアドレス欄から消す
+  ・「この URL?v=動画キー」で、その動画を直接開く
+  ・秘密の情報は入っていない（下の EXEC_URL は受講画面の置き場所で、誰に見られても困らない）
+-->
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #eef2f6; color: #1f2933;
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif; }
+  .box { max-width: 560px; margin: 0 auto; padding: 48px 16px; text-align: center; }
+  .box p { margin: 0; }
+  .err { color: #b42318; }
+</style>
+</head>
+<body>
+<div class="box"><p id="msg">読み込み中です…</p></div>
+<script>
+(function () {
+  'use strict';
+  var EXEC_URL = 'https://script.google.com/macros/s/AKfycbx137coV_ZPJ7B5N7nsBA0iasYVsuzHa1D6X6xLvfhImXnbxEzW_c9IookZObN6V84a/exec';
+  var KEY_STORE = 'svp_entryKey';   // 読み込みに失敗して開き直したときのための一時保存（受講画面がログインしたら消す）
+  var msg = document.getElementById('msg');
+  function show(text, isErr) { msg.textContent = text; msg.className = isErr ? 'err' : ''; }
+
+  // 本人専用リンク（#k=）の鍵を読み取り、アドレス欄から消す（画面の写真やブックマークに鍵が残らないように）
+  var key = '';
+  var hash = location.hash || '';
+  var km = hash.match(/[#&]k=([A-Za-z0-9_-]{32})(?:&|$)/);
+  if (km) {
+    key = km[1];
+    try { window.sessionStorage.setItem(KEY_STORE, key); } catch (e) { /* 保存できない端末では、失敗したら QR をもう一度読む */ }
+  } else {
+    try { key = window.sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { key = ''; }
+    if (!/^[A-Za-z0-9_-]{32}$/.test(key)) key = '';
+  }
+  if (hash) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 古いブラウザ */ }
+  }
+  // 動画を直接開く（?v=）
+  var vm = (location.search || '').match(/[?&]v=([^&#]{1,200})/);
+  var v = '';
+  if (vm) { try { v = decodeURIComponent(vm[1]); } catch (e) { v = ''; } }
+
+  var url = EXEC_URL + '?view=app' + (key ? '&k=' + key : '') + (v ? '&v=' + encodeURIComponent(v) : '');
+  var tries = 0;
+  function load() {
+    tries++;
+    var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, 30000) : null;
+    var opt = { credentials: 'omit', redirect: 'follow' };
+    if (ctl) opt.signal = ctl.signal;
+    fetch(url + '&t=' + Date.now() + '-' + tries, opt)
+      .then(function (r) {
+        if (!r.ok) throw new Error('通信エラー ' + r.status);
+        return r.text();
+      })
+      .then(function (html) {
+        if (timer) clearTimeout(timer);
+        if (html.indexOf('<html') < 0) throw new Error('画面を受け取れませんでした');
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(function (e) {
+        if (timer) clearTimeout(timer);
+        var why = (e && e.name === 'AbortError') ? '応答がありませんでした' : String((e && e.message) || e);
+        if (tries < 3) {
+          show('読み込み中です…（' + (tries + 1) + '回目）');
+          setTimeout(load, 1000 * tries);
+        } else {
+          show('読み込みに失敗しました。電波の良い所で、このページを開き直してください。（' + why + '）', true);
+        }
+      });
+  }
+  load();
+})();
+</script>
+</body>
+</html>
